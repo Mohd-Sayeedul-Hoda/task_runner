@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package grpcapi;
+
+option go_package = "github.com/Mohd-Sayeedul-Hoda/task_runner/internal/grpcapi";
+
+enum TaskStatus {
+  PENDING = 0;
+  QUEUED = 1;
+  RUNNING = 2;
+  COMPLETE = 3;
+  FAILED = 4;
+}
+
+message MessageAck {
+  bool success = 1;
+}
+
+service WorkerService{
+  rpc SubmitTask( TaskRequest ) returns (MessageAck);
+}
+
+message TaskRequest {
+  string task_id = 1;
+  bytes payload = 2;
+
+}
+
+service Scheduler {
+  rpc SendHearthbeat(HeartbeatRequest) returns (MessageAck);
+  rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (MessageAck);
+}
+
+message HeartbeatRequest {
+  string worker_id = 1;
+  float cpu_usage = 2;    // Current CPU %
+  int32 available_slots = 3; // How many more tasks can I handle?
+}
+
+message UpdateTaskStatusRequest{
+  string task_id = 1;
+  TaskStatus status = 2;
+  string log_message = 3; // for logging task status in scheduler
+}
