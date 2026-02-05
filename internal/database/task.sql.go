@@ -54,14 +54,91 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 	return i, err
 }
 
-const listTasksByStatus = `-- name: ListTasksByStatus :many
+const getPendingTasksForUpdate = `-- name: GetPendingTasksForUpdate :many
+SELECT id, task_type, payload, status, run_at, created_at, updated_at FROM tasks
+WHERE status = 'PENDING' 
+  AND run_at <= NOW()
+ORDER BY run_at ASC
+LIMIT $1
+FOR UPDATE SKIP LOCKED
+`
+
+func (q *Queries) GetPendingTasksForUpdate(ctx context.Context, limit int32) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, getPendingTasksForUpdate, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Task{}
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskType,
+			&i.Payload,
+			&i.Status,
+			&i.RunAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getStalledTasks = `-- name: GetStalledTasks :many
+SELECT id, task_type, payload, status, run_at, created_at, updated_at FROM tasks
+WHERE status IN ('RUNNING', 'QUEUED')
+AND updated_at < NOW() - INTERVAL '5 minutes'
+`
+
+func (q *Queries) GetStalledTasks(ctx context.Context) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, getStalledTasks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Task{}
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskType,
+			&i.Payload,
+			&i.Status,
+			&i.RunAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTasksByStatus = `-- name: GetTasksByStatus :many
 SELECT id, task_type, payload, status, run_at, created_at, updated_at FROM tasks
 WHERE status = $1 
 ORDER BY run_at DESC
 `
 
-func (q *Queries) ListTasksByStatus(ctx context.Context, status string) ([]Task, error) {
-	rows, err := q.db.QueryContext(ctx, listTasksByStatus, status)
+func (q *Queries) GetTasksByStatus(ctx context.Context, status string) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, getTasksByStatus, status)
 	if err != nil {
 		return nil, err
 	}

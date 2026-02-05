@@ -18,6 +18,9 @@ run-scheduler: build-scheduler
 run-worker: build-worker
   ./build/worker
 
+sqlc:
+  sqlc generate
+
 # Generate Protobuf files
 proto:
   protoc --go_out=. --go_opt=paths=source_relative \

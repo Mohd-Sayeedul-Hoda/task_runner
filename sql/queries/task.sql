@@ -32,4 +32,4 @@ FOR UPDATE SKIP LOCKED;
 -- name: GetStalledTasks :many
 SELECT * FROM tasks
 WHERE status IN ('RUNNING', 'QUEUED')
-AND updated_at < NOW() - INTERVAL 5 MINUTE;
+AND updated_at < NOW() - INTERVAL '5 minutes';
