@@ -121,7 +121,7 @@ var WorkerService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	Scheduler_SendHearthbeat_FullMethodName   = "/grpcapi.Scheduler/SendHearthbeat"
+	Scheduler_SendHeartbeat_FullMethodName    = "/grpcapi.Scheduler/SendHeartbeat"
 	Scheduler_UpdateTaskStatus_FullMethodName = "/grpcapi.Scheduler/UpdateTaskStatus"
 )
 
@@ -129,7 +129,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type SchedulerClient interface {
-	SendHearthbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*MessageAck, error)
+	SendHeartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*MessageAck, error)
 	UpdateTaskStatus(ctx context.Context, in *UpdateTaskStatusRequest, opts ...grpc.CallOption) (*MessageAck, error)
 }
 
@@ -141,10 +141,10 @@ func NewSchedulerClient(cc grpc.ClientConnInterface) SchedulerClient {
 	return &schedulerClient{cc}
 }
 
-func (c *schedulerClient) SendHearthbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*MessageAck, error) {
+func (c *schedulerClient) SendHeartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*MessageAck, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(MessageAck)
-	err := c.cc.Invoke(ctx, Scheduler_SendHearthbeat_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, Scheduler_SendHeartbeat_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +165,7 @@ func (c *schedulerClient) UpdateTaskStatus(ctx context.Context, in *UpdateTaskSt
 // All implementations must embed UnimplementedSchedulerServer
 // for forward compatibility.
 type SchedulerServer interface {
-	SendHearthbeat(context.Context, *HeartbeatRequest) (*MessageAck, error)
+	SendHeartbeat(context.Context, *HeartbeatRequest) (*MessageAck, error)
 	UpdateTaskStatus(context.Context, *UpdateTaskStatusRequest) (*MessageAck, error)
 	mustEmbedUnimplementedSchedulerServer()
 }
@@ -177,8 +177,8 @@ type SchedulerServer interface {
 // pointer dereference when methods are called.
 type UnimplementedSchedulerServer struct{}
 
-func (UnimplementedSchedulerServer) SendHearthbeat(context.Context, *HeartbeatRequest) (*MessageAck, error) {
-	return nil, status.Error(codes.Unimplemented, "method SendHearthbeat not implemented")
+func (UnimplementedSchedulerServer) SendHeartbeat(context.Context, *HeartbeatRequest) (*MessageAck, error) {
+	return nil, status.Error(codes.Unimplemented, "method SendHeartbeat not implemented")
 }
 func (UnimplementedSchedulerServer) UpdateTaskStatus(context.Context, *UpdateTaskStatusRequest) (*MessageAck, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateTaskStatus not implemented")
@@ -204,20 +204,20 @@ func RegisterSchedulerServer(s grpc.ServiceRegistrar, srv SchedulerServer) {
 	s.RegisterService(&Scheduler_ServiceDesc, srv)
 }
 
-func _Scheduler_SendHearthbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Scheduler_SendHeartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HeartbeatRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SchedulerServer).SendHearthbeat(ctx, in)
+		return srv.(SchedulerServer).SendHeartbeat(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Scheduler_SendHearthbeat_FullMethodName,
+		FullMethod: Scheduler_SendHeartbeat_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SchedulerServer).SendHearthbeat(ctx, req.(*HeartbeatRequest))
+		return srv.(SchedulerServer).SendHeartbeat(ctx, req.(*HeartbeatRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -248,8 +248,8 @@ var Scheduler_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*SchedulerServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "SendHearthbeat",
-			Handler:    _Scheduler_SendHearthbeat_Handler,
+			MethodName: "SendHeartbeat",
+			Handler:    _Scheduler_SendHeartbeat_Handler,
 		},
 		{
 			MethodName: "UpdateTaskStatus",

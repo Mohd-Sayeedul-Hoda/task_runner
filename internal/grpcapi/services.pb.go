@@ -177,6 +177,7 @@ type HeartbeatRequest struct {
 	WorkerId       string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
 	CpuUsage       float32                `protobuf:"fixed32,2,opt,name=cpu_usage,json=cpuUsage,proto3" json:"cpu_usage,omitempty"`                  // Current CPU %
 	AvailableSlots int32                  `protobuf:"varint,3,opt,name=available_slots,json=availableSlots,proto3" json:"available_slots,omitempty"` // How many more tasks can I handle?
+	WorkerAddress  string                 `protobuf:"bytes,4,opt,name=worker_address,json=workerAddress,proto3" json:"worker_address,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -230,6 +231,13 @@ func (x *HeartbeatRequest) GetAvailableSlots() int32 {
 		return x.AvailableSlots
 	}
 	return 0
+}
+
+func (x *HeartbeatRequest) GetWorkerAddress() string {
+	if x != nil {
+		return x.WorkerAddress
+	}
+	return ""
 }
 
 type UpdateTaskStatusRequest struct {
@@ -302,11 +310,12 @@ const file_internal_grpcapi_services_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"@\n" +
 	"\vTaskRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x18\n" +
-	"\apayload\x18\x02 \x01(\fR\apayload\"u\n" +
+	"\apayload\x18\x02 \x01(\fR\apayload\"\x9c\x01\n" +
 	"\x10HeartbeatRequest\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x1b\n" +
 	"\tcpu_usage\x18\x02 \x01(\x02R\bcpuUsage\x12'\n" +
-	"\x0favailable_slots\x18\x03 \x01(\x05R\x0eavailableSlots\"\x80\x01\n" +
+	"\x0favailable_slots\x18\x03 \x01(\x05R\x0eavailableSlots\x12%\n" +
+	"\x0eworker_address\x18\x04 \x01(\tR\rworkerAddress\"\x80\x01\n" +
 	"\x17UpdateTaskStatusRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12+\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x13.grpcapi.TaskStatusR\x06status\x12\x1f\n" +
@@ -323,9 +332,9 @@ const file_internal_grpcapi_services_proto_rawDesc = "" +
 	"\x06FAILED\x10\x042H\n" +
 	"\rWorkerService\x127\n" +
 	"\n" +
-	"SubmitTask\x12\x14.grpcapi.TaskRequest\x1a\x13.grpcapi.MessageAck2\x98\x01\n" +
-	"\tScheduler\x12@\n" +
-	"\x0eSendHearthbeat\x12\x19.grpcapi.HeartbeatRequest\x1a\x13.grpcapi.MessageAck\x12I\n" +
+	"SubmitTask\x12\x14.grpcapi.TaskRequest\x1a\x13.grpcapi.MessageAck2\x97\x01\n" +
+	"\tScheduler\x12?\n" +
+	"\rSendHeartbeat\x12\x19.grpcapi.HeartbeatRequest\x1a\x13.grpcapi.MessageAck\x12I\n" +
 	"\x10UpdateTaskStatus\x12 .grpcapi.UpdateTaskStatusRequest\x1a\x13.grpcapi.MessageAckB<Z:github.com/Mohd-Sayeedul-Hoda/task_runner/internal/grpcapib\x06proto3"
 
 var (
@@ -352,10 +361,10 @@ var file_internal_grpcapi_services_proto_goTypes = []any{
 var file_internal_grpcapi_services_proto_depIdxs = []int32{
 	0, // 0: grpcapi.UpdateTaskStatusRequest.status:type_name -> grpcapi.TaskStatus
 	2, // 1: grpcapi.WorkerService.SubmitTask:input_type -> grpcapi.TaskRequest
-	3, // 2: grpcapi.Scheduler.SendHearthbeat:input_type -> grpcapi.HeartbeatRequest
+	3, // 2: grpcapi.Scheduler.SendHeartbeat:input_type -> grpcapi.HeartbeatRequest
 	4, // 3: grpcapi.Scheduler.UpdateTaskStatus:input_type -> grpcapi.UpdateTaskStatusRequest
 	1, // 4: grpcapi.WorkerService.SubmitTask:output_type -> grpcapi.MessageAck
-	1, // 5: grpcapi.Scheduler.SendHearthbeat:output_type -> grpcapi.MessageAck
+	1, // 5: grpcapi.Scheduler.SendHeartbeat:output_type -> grpcapi.MessageAck
 	1, // 6: grpcapi.Scheduler.UpdateTaskStatus:output_type -> grpcapi.MessageAck
 	4, // [4:7] is the sub-list for method output_type
 	1, // [1:4] is the sub-list for method input_type
