@@ -8,15 +8,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sqlc-dev/pqtype"
 )
 
 type Task struct {
-	ID        uuid.UUID             `json:"id"`
-	TaskType  string                `json:"task_type"`
-	Payload   pqtype.NullRawMessage `json:"payload"`
-	Status    string                `json:"status"`
-	RunAt     time.Time             `json:"run_at"`
-	CreatedAt time.Time             `json:"created_at"`
-	UpdatedAt time.Time             `json:"updated_at"`
+	ID        uuid.UUID `json:"id"`
+	TaskType  string    `json:"task_type"`
+	Payload   []byte    `json:"payload"`
+	Status    string    `json:"status"`
+	RunAt     time.Time `json:"run_at"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

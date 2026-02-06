@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sqlc-dev/pqtype"
 )
 
 const createTask = `-- name: CreateTask :one
@@ -28,14 +27,14 @@ RETURNING id, task_type, payload, status, run_at, created_at, updated_at
 `
 
 type CreateTaskParams struct {
-	TaskType string                `json:"task_type"`
-	Payload  pqtype.NullRawMessage `json:"payload"`
-	Status   string                `json:"status"`
-	RunAt    time.Time             `json:"run_at"`
+	TaskType string    `json:"task_type"`
+	Payload  []byte    `json:"payload"`
+	Status   string    `json:"status"`
+	RunAt    time.Time `json:"run_at"`
 }
 
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
-	row := q.db.QueryRowContext(ctx, createTask,
+	row := q.db.QueryRow(ctx, createTask,
 		arg.TaskType,
 		arg.Payload,
 		arg.Status,
@@ -64,7 +63,7 @@ FOR UPDATE SKIP LOCKED
 `
 
 func (q *Queries) GetPendingTasksForUpdate(ctx context.Context, limit int32) ([]Task, error) {
-	rows, err := q.db.QueryContext(ctx, getPendingTasksForUpdate, limit)
+	rows, err := q.db.Query(ctx, getPendingTasksForUpdate, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -84,9 +83,6 @@ func (q *Queries) GetPendingTasksForUpdate(ctx context.Context, limit int32) ([]
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -101,7 +97,7 @@ AND updated_at < NOW() - INTERVAL '5 minutes'
 `
 
 func (q *Queries) GetStalledTasks(ctx context.Context) ([]Task, error) {
-	rows, err := q.db.QueryContext(ctx, getStalledTasks)
+	rows, err := q.db.Query(ctx, getStalledTasks)
 	if err != nil {
 		return nil, err
 	}
@@ -121,9 +117,6 @@ func (q *Queries) GetStalledTasks(ctx context.Context) ([]Task, error) {
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -138,7 +131,7 @@ ORDER BY run_at DESC
 `
 
 func (q *Queries) GetTasksByStatus(ctx context.Context, status string) ([]Task, error) {
-	rows, err := q.db.QueryContext(ctx, getTasksByStatus, status)
+	rows, err := q.db.Query(ctx, getTasksByStatus, status)
 	if err != nil {
 		return nil, err
 	}
@@ -158,9 +151,6 @@ func (q *Queries) GetTasksByStatus(ctx context.Context, status string) ([]Task, 
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -180,6 +170,6 @@ type UpdateTaskStatusParams struct {
 }
 
 func (q *Queries) UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) error {
-	_, err := q.db.ExecContext(ctx, updateTaskStatus, arg.Status, arg.ID)
+	_, err := q.db.Exec(ctx, updateTaskStatus, arg.Status, arg.ID)
 	return err
 }
