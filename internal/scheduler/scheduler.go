@@ -18,6 +18,13 @@ import (
 	status "google.golang.org/grpc/status"
 )
 
+const (
+	WorkerTimeout             = 30 * time.Second
+	WorkerHealthCheckInterval = 15 * time.Second
+	HighCPULimit              = 90.0
+	TaskPollInterval          = 5 * time.Second
+)
+
 type TaskStatus string
 
 var (
@@ -54,6 +61,19 @@ func NewServer(dbPool *pgxpool.Pool, queries *database.Queries) *SchedulerServer
 		queries:    queries,
 		workerPool: make(map[string]*WorkerInfo),
 	}
+}
+
+func (s *SchedulerServer) Shutdown() {
+	s.workerPoolMutex.Lock()
+	defer s.workerPoolMutex.Unlock()
+
+	for _, worker := range s.workerPool {
+		if worker.conn != nil {
+			worker.conn.Close()
+		}
+	}
+	slog.Info("all worker connection close...")
+	s.workerPool = make(map[string]*WorkerInfo)
 }
 
 func (s *SchedulerServer) SendHeartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.MessageAck, error) {
@@ -132,7 +152,7 @@ func (s *SchedulerServer) removeInactiveWorkerPool() {
 	defer s.workerPoolMutex.Unlock()
 
 	for workerID, worker := range s.workerPool {
-		if time.Since(worker.lastSeen) > 30*time.Second {
+		if time.Since(worker.lastSeen) > WorkerTimeout {
 			slog.Warn("Removing unused worker", "worker_id", workerID, "inactive_for", time.Since(worker.lastSeen).Round(time.Second).String(), "last_seen", worker.lastSeen.String())
 			if worker.conn != nil {
 				worker.conn.Close()
@@ -146,7 +166,7 @@ func (s *SchedulerServer) removeInactiveWorkerPool() {
 func (s *SchedulerServer) ManageWorkerPool(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(WorkerTimeout)
 	for {
 		select {
 		case <-ctx.Done():
@@ -161,13 +181,13 @@ func (s *SchedulerServer) ManageWorkerPool(ctx context.Context, wg *sync.WaitGro
 func (s *SchedulerServer) ManageTask(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(TaskPollInterval)
 	for {
 		select {
 		case <-ticker.C:
 			s.manageAndScheduleTask(ctx)
 		case <-ctx.Done():
-			slog.Info("something")
+			slog.Info("stopping manage task...")
 			return
 		}
 	}
@@ -191,7 +211,7 @@ func (s *SchedulerServer) manageAndScheduleTask(ctx context.Context) {
 	}
 
 	for _, task := range tasks {
-		worker, err := s.GetBestWorker()
+		worker, err := s.getBestWorker()
 		if err != nil {
 			slog.Error("unable to get worker", "err", err)
 			continue
@@ -208,28 +228,32 @@ func (s *SchedulerServer) manageAndScheduleTask(ctx context.Context) {
 			continue
 		}
 
-		qtx.UpdateTaskStatus(ctx, database.UpdateTaskStatusParams{
+		err = qtx.UpdateTaskStatus(ctx, database.UpdateTaskStatusParams{
 			Status: string(Queued),
 			ID:     task.ID,
 		})
+		if err != nil {
+			slog.Error("failed to update task status", "err", err, "task_id", task.ID)
+			continue
+		}
 	}
 
 	if err = tx.Commit(ctx); err != nil {
 		slog.Error("failed to commit task", "err", err)
+		return
 	}
+	slog.Info("Successfully committed task updates")
 }
 
-func (s *SchedulerServer) GetBestWorker() (*WorkerInfo, error) {
+func (s *SchedulerServer) getBestWorker() (*WorkerInfo, error) {
 	s.workerPoolMutex.RLock()
 	defer s.workerPoolMutex.RUnlock()
 
 	var bestWorker *WorkerInfo
 	var highestScore float32 = -1.0
 
-	now := time.Now()
-
 	for _, worker := range s.workerPool {
-		if now.Sub(worker.lastSeen) > 15*time.Second || worker.cpuUsage > 90.0 {
+		if time.Since(worker.lastSeen) > WorkerHealthCheckInterval || worker.cpuUsage > HighCPULimit {
 			continue
 		}
 

@@ -23,11 +23,11 @@ import (
 )
 
 type Config struct {
-	Port         int           `env:"PORT" envDefault:"10000"`
-	DSN          string        `env:"DB_DSN,required"`
-	MaxOpenConn  int32         `env:"DB_MAX_OPEN_CONNS" envDefault:"10"`
-	MaxIdealConn int32         `env:"DB_MAX_IDLE_CONNS" envDefault:"10"`
-	MaxIdleTime  time.Duration `env:"DB_MAX_IDLE_TIME" envDefault:"10m"`
+	Port        int           `env:"PORT" envDefault:"10000"`
+	DSN         string        `env:"DB_DSN,required"`
+	MaxOpenConn int32         `env:"DB_MAX_OPEN_CONNS" envDefault:"10"`
+	MinConns    int32         `env:"DB_MIN_CONNS" envDefault:"10"`
+	MaxIdleTime time.Duration `env:"DB_MAX_IDLE_TIME" envDefault:"10m"`
 }
 
 func main() {
@@ -97,6 +97,9 @@ func run(ctx context.Context, getenv func(string) string, w io.Writer, args []st
 	wg.Add(1)
 	go server.ManageWorkerPool(ctx, &wg)
 
+	wg.Add(1)
+	go server.ManageTask(ctx, &wg)
+
 	select {
 	case <-ctx.Done():
 		slog.Info("shutdown initiated", slog.String("reason", "context cancelled"))
@@ -105,6 +108,7 @@ func run(ctx context.Context, getenv func(string) string, w io.Writer, args []st
 	}
 
 	slog.Info("stopping grpc server...")
+	server.Shutdown()
 	grpcServer.GracefulStop()
 
 	slog.Info("waiting for background goroutine...")
@@ -120,7 +124,7 @@ func OpenPostgresConn(ctx context.Context, cfg *Config) (*pgxpool.Pool, error) {
 	}
 
 	poolConfig.MaxConns = int32(cfg.MaxOpenConn)
-	poolConfig.MinConns = int32(cfg.MaxIdealConn)
+	poolConfig.MinConns = int32(cfg.MinConns)
 	poolConfig.MaxConnIdleTime = cfg.MaxIdleTime
 
 	conn, err := pgxpool.NewWithConfig(ctx, poolConfig)
