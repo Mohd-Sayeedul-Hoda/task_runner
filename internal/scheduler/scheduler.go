@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/Mohd-Sayeedul-Hoda/task_runner/internal/database"
 	pb "github.com/Mohd-Sayeedul-Hoda/task_runner/internal/grpcapi"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -29,9 +31,10 @@ var (
 type SchedulerServer struct {
 	pb.UnimplementedSchedulerServer
 	workerPool      map[string]*WorkerInfo
-	workerPoolMutex sync.Mutex
+	workerPoolMutex sync.RWMutex
 
 	queries *database.Queries
+	dbPool  *pgxpool.Pool
 	wg      sync.WaitGroup
 }
 
@@ -45,8 +48,9 @@ type WorkerInfo struct {
 	client        pb.WorkerServiceClient
 }
 
-func NewServer(queries *database.Queries) *SchedulerServer {
+func NewServer(dbPool *pgxpool.Pool, queries *database.Queries) *SchedulerServer {
 	return &SchedulerServer{
+		dbPool:     dbPool,
 		queries:    queries,
 		workerPool: make(map[string]*WorkerInfo),
 	}
@@ -74,14 +78,19 @@ func (s *SchedulerServer) SendHeartbeat(ctx context.Context, req *pb.HeartbeatRe
 
 		s.workerPoolMutex.Lock()
 
-		s.workerPool[req.GetWorkerId()] = &WorkerInfo{
-			workerId:      req.GetWorkerId(),
-			addr:          req.GetWorkerAddress(),
-			conn:          conn,
-			client:        pb.NewWorkerServiceClient(conn),
-			lastSeen:      time.Now(),
-			cpuUsage:      req.GetCpuUsage(),
-			availableSlot: req.GetAvailableSlots(),
+		if _, stillNew := s.workerPool[req.GetWorkerId()]; stillNew {
+			conn.Close()
+		} else {
+			s.workerPool[req.GetWorkerId()] = &WorkerInfo{
+				workerId:      req.GetWorkerId(),
+				addr:          req.GetWorkerAddress(),
+				conn:          conn,
+				client:        pb.NewWorkerServiceClient(conn),
+				lastSeen:      time.Now(),
+				cpuUsage:      req.GetCpuUsage(),
+				availableSlot: req.GetAvailableSlots(),
+			}
+			slog.Info("Registered Worker", "worker_id", req.GetWorkerId())
 		}
 
 		s.workerPoolMutex.Unlock()
@@ -100,22 +109,13 @@ func (s *SchedulerServer) UpdateTaskStatus(ctx context.Context, req *pb.UpdateTa
 		return nil, status.Error(5, "not a valid task id")
 	}
 
-	statusStr := req.GetStatus().String()
-	switch req.GetStatus() {
-	case pb.TaskStatus_PENDING, pb.TaskStatus_QUEUED, pb.TaskStatus_RUNNING,
-		pb.TaskStatus_COMPLETE, pb.TaskStatus_FAILED:
-		slog.Info("updating task status",
-			"task_id", taskId,
-			"status", statusStr,
-			"log", req.GetLogMessage(),
-		)
-	default:
-		return nil, status.Error(codes.InvalidArgument, "unrecognized task status")
-	}
+	dbStatus := s.mapGRPCStatusToDB(req.GetStatus())
+
+	slog.Info("updating task status", "task_id", taskId, "status", dbStatus)
 
 	err = s.queries.UpdateTaskStatus(ctx, database.UpdateTaskStatusParams{
 		ID:     taskId,
-		Status: statusStr,
+		Status: dbStatus,
 	})
 	if err != nil {
 		slog.Error("database update failed", "task_id", taskId.String(), "error", err)
@@ -144,15 +144,123 @@ func (s *SchedulerServer) removeInactiveWorkerPool() {
 }
 
 func (s *SchedulerServer) ManageWorkerPool(ctx context.Context, wg *sync.WaitGroup) {
-	wg.Done()
+	defer wg.Done()
 
 	ticker := time.NewTicker(30 * time.Second)
-	select {
-	case <-ctx.Done():
-		slog.Info("recived cancel context: stopping manage worker pool")
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("recived cancel context: stopping manage worker pool")
+			return
+		case <-ticker.C:
+			s.removeInactiveWorkerPool()
+		}
+	}
+}
+
+func (s *SchedulerServer) ManageTask(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	ticker := time.NewTicker(5 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			s.manageAndScheduleTask(ctx)
+		case <-ctx.Done():
+			slog.Info("something")
+			return
+		}
+	}
+}
+
+func (s *SchedulerServer) manageAndScheduleTask(ctx context.Context) {
+	tx, err := s.dbPool.Begin(ctx)
+	if err != nil {
+		slog.Error("failed to begin transaciton", "error", err)
 		return
-	case <-ticker.C:
-		s.removeInactiveWorkerPool()
 	}
 
+	defer tx.Rollback(ctx)
+
+	qtx := s.queries.WithTx(tx)
+
+	tasks, err := qtx.GetPendingTasksForUpdate(ctx)
+	if err != nil {
+		slog.Error("unable to fetch pending task", "err", err)
+		return
+	}
+
+	for _, task := range tasks {
+		worker, err := s.GetBestWorker()
+		if err != nil {
+			slog.Error("unable to get worker", "err", err)
+			continue
+		}
+
+		childCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		_, err = worker.client.SubmitTask(childCtx, &pb.TaskRequest{
+			TaskId:  task.ID.String(),
+			Payload: task.Payload,
+		})
+		cancel()
+		if err != nil {
+			slog.Error("failed to submit task", "err", err)
+			continue
+		}
+
+		qtx.UpdateTaskStatus(ctx, database.UpdateTaskStatusParams{
+			Status: string(Queued),
+			ID:     task.ID,
+		})
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		slog.Error("failed to commit task", "err", err)
+	}
+}
+
+func (s *SchedulerServer) GetBestWorker() (*WorkerInfo, error) {
+	s.workerPoolMutex.RLock()
+	defer s.workerPoolMutex.RUnlock()
+
+	var bestWorker *WorkerInfo
+	var highestScore float32 = -1.0
+
+	now := time.Now()
+
+	for _, worker := range s.workerPool {
+		if now.Sub(worker.lastSeen) > 15*time.Second || worker.cpuUsage > 90.0 {
+			continue
+		}
+
+		score := (100.0 - worker.cpuUsage) * float32(worker.availableSlot)
+
+		if score > highestScore {
+			highestScore = score
+			bestWorker = worker
+		}
+	}
+
+	if bestWorker == nil {
+		return nil, errors.New("no healthy workers with available slots found")
+	}
+
+	return bestWorker, nil
+}
+
+func (s *SchedulerServer) mapGRPCStatusToDB(grpcStatus pb.TaskStatus) string {
+	switch grpcStatus {
+	case pb.TaskStatus_PENDING:
+		return string(Pending)
+	case pb.TaskStatus_QUEUED:
+		return string(Queued)
+	case pb.TaskStatus_RUNNING:
+		return string(Running)
+	case pb.TaskStatus_COMPLETE:
+		return string(COMPLETED)
+	case pb.TaskStatus_FAILED:
+		return string(FAILED)
+	default:
+		return string(Pending)
+	}
 }

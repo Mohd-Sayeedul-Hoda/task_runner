@@ -58,12 +58,11 @@ SELECT id, task_type, payload, status, run_at, created_at, updated_at FROM tasks
 WHERE status = 'PENDING' 
   AND run_at <= NOW()
 ORDER BY run_at ASC
-LIMIT $1
 FOR UPDATE SKIP LOCKED
 `
 
-func (q *Queries) GetPendingTasksForUpdate(ctx context.Context, limit int32) ([]Task, error) {
-	rows, err := q.db.Query(ctx, getPendingTasksForUpdate, limit)
+func (q *Queries) GetPendingTasksForUpdate(ctx context.Context) ([]Task, error) {
+	rows, err := q.db.Query(ctx, getPendingTasksForUpdate)
 	if err != nil {
 		return nil, err
 	}

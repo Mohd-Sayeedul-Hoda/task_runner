@@ -26,7 +26,6 @@ SELECT * FROM tasks
 WHERE status = 'PENDING' 
   AND run_at <= NOW()
 ORDER BY run_at ASC
-LIMIT $1
 FOR UPDATE SKIP LOCKED;
 
 -- name: GetStalledTasks :many
