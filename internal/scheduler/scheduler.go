@@ -36,7 +36,7 @@ type WorkerInfo struct {
 	client        pb.WorkerServiceClient
 }
 
-func NewServer(port int, queries *database.Queries) *SchedulerServer {
+func NewServer(queries *database.Queries) *SchedulerServer {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &SchedulerServer{
 		queries:    queries,
@@ -96,7 +96,7 @@ func (s *SchedulerServer) RemoveInactiveWorkerPool() {
 
 	for workerID, worker := range s.workerPool {
 		if time.Since(worker.lastSeen) > 30*time.Second {
-			slog.Warn("Removing unused worker", "worker_id", workerID, "last_seen", worker.lastSeen.String())
+			slog.Warn("Removing unused worker", "worker_id", workerID, "inactive_for", time.Since(worker.lastSeen).Round(time.Second).String(), "last_seen", worker.lastSeen.String())
 			if worker.conn != nil {
 				worker.conn.Close()
 			}
