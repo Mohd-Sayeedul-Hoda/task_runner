@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Mohd-Sayeedul-Hoda/task_runner/internal/database"
@@ -65,6 +66,7 @@ func run(ctx context.Context, getenv func(string) string, w io.Writer, args []st
 	if err != nil {
 		return fmt.Errorf("unable to open postgres connection: %s", err.Error())
 	}
+	defer dbPool.Close()
 	slog.Info("database connected")
 
 	dbQueries := database.New(dbPool)
@@ -73,21 +75,27 @@ func run(ctx context.Context, getenv func(string) string, w io.Writer, args []st
 	if err != nil {
 		return fmt.Errorf("unable to start tcp server at port=%d err=%s", cfg.Port, err.Error())
 	}
+	defer tcpListner.Close()
 
 	server := scheduler.NewServer(dbQueries)
 	schedulerRegistery := grpc.NewServer()
 	pb.RegisterSchedulerServer(schedulerRegistery, server)
+
+	var wg sync.WaitGroup
 
 	serverError := make(chan error, 1)
 	go func() {
 		slog.Info("starting grpc server", "port", cfg.Port)
 		err := schedulerRegistery.Serve(tcpListner)
 		if err != nil {
-			slog.Error("error while starting grpc server", "err", err.Error())
+			slog.Error("unable to start grpc server", "err", err.Error())
 			serverError <- err
 			return
 		}
 	}()
+
+	wg.Add(1)
+	go server.ManageWorkerPool(ctx, &wg)
 
 	select {
 	case <-ctx.Done():
@@ -95,6 +103,12 @@ func run(ctx context.Context, getenv func(string) string, w io.Writer, args []st
 	case err := <-serverError:
 		return err
 	}
+
+	slog.Info("stopping grpc server...")
+	schedulerRegistery.GracefulStop()
+
+	slog.Info("waiting for background goroutine...")
+	wg.Wait()
 
 	return nil
 }

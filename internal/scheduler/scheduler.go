@@ -8,11 +8,22 @@ import (
 
 	"github.com/Mohd-Sayeedul-Hoda/task_runner/internal/database"
 	pb "github.com/Mohd-Sayeedul-Hoda/task_runner/internal/grpcapi"
+	"github.com/google/uuid"
 
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	status "google.golang.org/grpc/status"
+)
+
+type TaskStatus string
+
+var (
+	Pending   TaskStatus = "PENDING"
+	Queued    TaskStatus = "QUEUED"
+	Running   TaskStatus = "RUNNING"
+	COMPLETED TaskStatus = "COMPLETED"
+	FAILED    TaskStatus = "FAILED"
 )
 
 type SchedulerServer struct {
@@ -21,8 +32,6 @@ type SchedulerServer struct {
 	workerPoolMutex sync.Mutex
 
 	queries *database.Queries
-	ctx     context.Context
-	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 }
 
@@ -37,12 +46,9 @@ type WorkerInfo struct {
 }
 
 func NewServer(queries *database.Queries) *SchedulerServer {
-	ctx, cancel := context.WithCancel(context.Background())
 	return &SchedulerServer{
 		queries:    queries,
 		workerPool: make(map[string]*WorkerInfo),
-		ctx:        ctx,
-		cancel:     cancel,
 	}
 }
 
@@ -87,10 +93,41 @@ func (s *SchedulerServer) SendHeartbeat(ctx context.Context, req *pb.HeartbeatRe
 }
 
 func (s *SchedulerServer) UpdateTaskStatus(ctx context.Context, req *pb.UpdateTaskStatusRequest) (*pb.MessageAck, error) {
-	return nil, status.Error(codes.Unimplemented, "method SendHeartbeat not implemented")
+
+	taskId, err := uuid.Parse(req.GetTaskId())
+	if err != nil {
+		slog.Error("invalid uuid received", "task_id", req.GetTaskId())
+		return nil, status.Error(5, "not a valid task id")
+	}
+
+	statusStr := req.GetStatus().String()
+	switch req.GetStatus() {
+	case pb.TaskStatus_PENDING, pb.TaskStatus_QUEUED, pb.TaskStatus_RUNNING,
+		pb.TaskStatus_COMPLETE, pb.TaskStatus_FAILED:
+		slog.Info("updating task status",
+			"task_id", taskId,
+			"status", statusStr,
+			"log", req.GetLogMessage(),
+		)
+	default:
+		return nil, status.Error(codes.InvalidArgument, "unrecognized task status")
+	}
+
+	err = s.queries.UpdateTaskStatus(ctx, database.UpdateTaskStatusParams{
+		ID:     taskId,
+		Status: statusStr,
+	})
+	if err != nil {
+		slog.Error("database update failed", "task_id", taskId.String(), "error", err)
+		return nil, status.Error(codes.Internal, "intenal server error")
+	}
+
+	return &pb.MessageAck{
+		Success: true,
+	}, nil
 }
 
-func (s *SchedulerServer) RemoveInactiveWorkerPool() {
+func (s *SchedulerServer) removeInactiveWorkerPool() {
 	s.workerPoolMutex.Lock()
 	defer s.workerPoolMutex.Unlock()
 
@@ -102,6 +139,20 @@ func (s *SchedulerServer) RemoveInactiveWorkerPool() {
 			}
 			delete(s.workerPool, workerID)
 		}
+	}
+
+}
+
+func (s *SchedulerServer) ManageWorkerPool(ctx context.Context, wg *sync.WaitGroup) {
+	wg.Done()
+
+	ticker := time.NewTicker(30 * time.Second)
+	select {
+	case <-ctx.Done():
+		slog.Info("recived cancel context: stopping manage worker pool")
+		return
+	case <-ticker.C:
+		s.removeInactiveWorkerPool()
 	}
 
 }
