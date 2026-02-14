@@ -173,13 +173,11 @@ func (x *TaskRequest) GetPayload() []byte {
 }
 
 type HeartbeatRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	WorkerId       string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
-	CpuUsage       float32                `protobuf:"fixed32,2,opt,name=cpu_usage,json=cpuUsage,proto3" json:"cpu_usage,omitempty"`                  // Current CPU %
-	AvailableSlots int32                  `protobuf:"varint,3,opt,name=available_slots,json=availableSlots,proto3" json:"available_slots,omitempty"` // How many more tasks can I handle?
-	WorkerAddress  string                 `protobuf:"bytes,4,opt,name=worker_address,json=workerAddress,proto3" json:"worker_address,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	WorkerAddress string                 `protobuf:"bytes,4,opt,name=worker_address,json=workerAddress,proto3" json:"worker_address,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *HeartbeatRequest) Reset() {
@@ -217,20 +215,6 @@ func (x *HeartbeatRequest) GetWorkerId() string {
 		return x.WorkerId
 	}
 	return ""
-}
-
-func (x *HeartbeatRequest) GetCpuUsage() float32 {
-	if x != nil {
-		return x.CpuUsage
-	}
-	return 0
-}
-
-func (x *HeartbeatRequest) GetAvailableSlots() int32 {
-	if x != nil {
-		return x.AvailableSlots
-	}
-	return 0
 }
 
 func (x *HeartbeatRequest) GetWorkerAddress() string {
@@ -310,11 +294,9 @@ const file_internal_grpcapi_services_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"@\n" +
 	"\vTaskRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x18\n" +
-	"\apayload\x18\x02 \x01(\fR\apayload\"\x9c\x01\n" +
+	"\apayload\x18\x02 \x01(\fR\apayload\"V\n" +
 	"\x10HeartbeatRequest\x12\x1b\n" +
-	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x1b\n" +
-	"\tcpu_usage\x18\x02 \x01(\x02R\bcpuUsage\x12'\n" +
-	"\x0favailable_slots\x18\x03 \x01(\x05R\x0eavailableSlots\x12%\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12%\n" +
 	"\x0eworker_address\x18\x04 \x01(\tR\rworkerAddress\"\x80\x01\n" +
 	"\x17UpdateTaskStatusRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12+\n" +

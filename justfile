@@ -18,6 +18,7 @@ run-scheduler: build-scheduler
 run-worker: build-worker
   ./build/worker
 
+# Genaret sqlc file
 sqlc:
   sqlc generate
 

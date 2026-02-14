@@ -161,7 +161,7 @@ func (s *SchedulerServer) removeInactiveWorkerPool() {
 			delete(s.workerPool, workerID)
 			s.workerPoolKeyMutex.Lock()
 			s.workerPoolKey = make([]string, 0, len(s.workerPool))
-			for workerID, _ := range s.workerPool {
+			for workerID := range s.workerPool {
 				s.workerPoolKey = append(s.workerPoolKey, workerID)
 			}
 			s.workerPoolKeyMutex.Unlock()
