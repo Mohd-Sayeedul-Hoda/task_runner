@@ -19,10 +19,8 @@ import (
 )
 
 const (
-	WorkerTimeout             = 30 * time.Second
-	WorkerHealthCheckInterval = 15 * time.Second
-	HighCPULimit              = 90.0
-	TaskPollInterval          = 5 * time.Second
+	WorkerTimeout    = 30 * time.Second
+	TaskPollInterval = 5 * time.Second
 )
 
 type TaskStatus string
@@ -43,23 +41,27 @@ type SchedulerServer struct {
 	queries *database.Queries
 	dbPool  *pgxpool.Pool
 	wg      sync.WaitGroup
+
+	roundRobinIdx      int
+	workerPoolKeyMutex sync.RWMutex
+	workerPoolKey      []string
 }
 
 type WorkerInfo struct {
-	workerId      string
-	lastSeen      time.Time
-	cpuUsage      float32
-	availableSlot int32
-	addr          string
-	conn          *grpc.ClientConn
-	client        pb.WorkerServiceClient
+	workerId string
+	lastSeen time.Time
+	addr     string
+	conn     *grpc.ClientConn
+	client   pb.WorkerServiceClient
 }
 
 func NewServer(dbPool *pgxpool.Pool, queries *database.Queries) *SchedulerServer {
 	return &SchedulerServer{
-		dbPool:     dbPool,
-		queries:    queries,
-		workerPool: make(map[string]*WorkerInfo),
+		dbPool:        dbPool,
+		queries:       queries,
+		workerPool:    make(map[string]*WorkerInfo),
+		workerPoolKey: make([]string, 0),
+		roundRobinIdx: 0,
 	}
 }
 
@@ -82,8 +84,6 @@ func (s *SchedulerServer) SendHeartbeat(ctx context.Context, req *pb.HeartbeatRe
 	if worker, ok := s.workerPool[req.GetWorkerId()]; ok {
 
 		worker.lastSeen = time.Now()
-		worker.cpuUsage = req.GetCpuUsage()
-		worker.availableSlot = req.GetAvailableSlots()
 
 		s.workerPoolMutex.Unlock()
 
@@ -102,20 +102,21 @@ func (s *SchedulerServer) SendHeartbeat(ctx context.Context, req *pb.HeartbeatRe
 			conn.Close()
 		} else {
 			s.workerPool[req.GetWorkerId()] = &WorkerInfo{
-				workerId:      req.GetWorkerId(),
-				addr:          req.GetWorkerAddress(),
-				conn:          conn,
-				client:        pb.NewWorkerServiceClient(conn),
-				lastSeen:      time.Now(),
-				cpuUsage:      req.GetCpuUsage(),
-				availableSlot: req.GetAvailableSlots(),
+				workerId: req.GetWorkerId(),
+				addr:     req.GetWorkerAddress(),
+				conn:     conn,
+				client:   pb.NewWorkerServiceClient(conn),
+				lastSeen: time.Now(),
 			}
+
+			s.workerPoolKeyMutex.Lock()
+			s.workerPoolKey = append(s.workerPoolKey, req.GetWorkerId())
+			s.workerPoolKeyMutex.Unlock()
+
 			slog.Info("Registered Worker", "worker_id", req.GetWorkerId())
 		}
 
 		s.workerPoolMutex.Unlock()
-		slog.Info("Registed Worker", slog.String("worker_id", req.GetWorkerId()))
-
 	}
 
 	return &pb.MessageAck{Success: true}, nil
@@ -158,6 +159,12 @@ func (s *SchedulerServer) removeInactiveWorkerPool() {
 				worker.conn.Close()
 			}
 			delete(s.workerPool, workerID)
+			s.workerPoolKeyMutex.Lock()
+			s.workerPoolKey = make([]string, 0, len(s.workerPool))
+			for workerID, _ := range s.workerPool {
+				s.workerPoolKey = append(s.workerPoolKey, workerID)
+			}
+			s.workerPoolKeyMutex.Unlock()
 		}
 	}
 
@@ -211,7 +218,7 @@ func (s *SchedulerServer) manageAndScheduleTask(ctx context.Context) {
 	}
 
 	for _, task := range tasks {
-		worker, err := s.getBestWorker()
+		worker, err := s.getWorker()
 		if err != nil {
 			slog.Error("unable to get worker", "err", err)
 			continue
@@ -245,31 +252,21 @@ func (s *SchedulerServer) manageAndScheduleTask(ctx context.Context) {
 	slog.Info("Successfully committed task updates")
 }
 
-func (s *SchedulerServer) getBestWorker() (*WorkerInfo, error) {
-	s.workerPoolMutex.RLock()
-	defer s.workerPoolMutex.RUnlock()
+// using round robin to distribute worker load
+func (s *SchedulerServer) getWorker() (*WorkerInfo, error) {
 
-	var bestWorker *WorkerInfo
-	var highestScore float32 = -1.0
+	s.workerPoolKeyMutex.Lock()
+	defer s.workerPoolKeyMutex.Unlock()
 
-	for _, worker := range s.workerPool {
-		if time.Since(worker.lastSeen) > WorkerHealthCheckInterval || worker.cpuUsage > HighCPULimit {
-			continue
-		}
-
-		score := (100.0 - worker.cpuUsage) * float32(worker.availableSlot)
-
-		if score > highestScore {
-			highestScore = score
-			bestWorker = worker
-		}
+	if len(s.workerPoolKey) == 0 {
+		return nil, errors.New("no worker found")
 	}
 
-	if bestWorker == nil {
-		return nil, errors.New("no healthy workers with available slots found")
-	}
+	s.roundRobinIdx = (s.roundRobinIdx + 1) % len(s.workerPoolKey)
+	worker := s.workerPool[s.workerPoolKey[s.roundRobinIdx]]
 
-	return bestWorker, nil
+	return worker, nil
+
 }
 
 func (s *SchedulerServer) mapGRPCStatusToDB(grpcStatus pb.TaskStatus) string {

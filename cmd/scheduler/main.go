@@ -107,12 +107,12 @@ func run(ctx context.Context, getenv func(string) string, w io.Writer, args []st
 		return err
 	}
 
+	slog.Info("waiting for background goroutine...")
+	wg.Wait()
+
 	slog.Info("stopping grpc server...")
 	server.Shutdown()
 	grpcServer.GracefulStop()
-
-	slog.Info("waiting for background goroutine...")
-	wg.Wait()
 
 	return nil
 }
