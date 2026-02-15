@@ -9,7 +9,15 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/Mohd-Sayeedul-Hoda/task_runner/internal/database"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+)
+
+const (
+	MaxOpenConn = 10
+	MinConns    = 10
+	MaxIdleTime = "10m"
 )
 
 func main() {
@@ -35,8 +43,18 @@ func run(ctx context.Context, getenv func(string) string) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
 
+	pgPool, err := openPostgresConn(ctx, getenv)
+	if err != nil {
+		return fmt.Errorf("unable to open postgres conn: %v", err)
+	}
+	slog.Info("database connected")
+	defer pgPool.Close()
+
+	db := database.New(pgPool)
+
 	mux := http.NewServeMux()
 	mux.Handle("GET /api/healthz", handlerHealth())
+	mux.Handle("POST /api/tasks", createTask(db))
 
 	httpServer := http.Server{
 		Addr:    ":" + getenv("HTTP_PORT"),
@@ -63,7 +81,7 @@ func run(ctx context.Context, getenv func(string) string) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	slog.Info("stopping http server")
-	err := httpServer.Shutdown(shutdownCtx)
+	err = httpServer.Shutdown(shutdownCtx)
 	if err != nil {
 		return err
 	}
@@ -72,10 +90,23 @@ func run(ctx context.Context, getenv func(string) string) error {
 	return nil
 }
 
-func handlerHealth() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		respondWithJson(w, http.StatusOK, envelope{
-			"msg": "service is healthy",
-		})
-	})
+func openPostgresConn(ctx context.Context, getenv func(string) string) (*pgxpool.Pool, error) {
+	poolConfig, err := pgxpool.ParseConfig(getenv("DB_DSN"))
+	if err != nil {
+		return nil, err
+	}
+
+	poolConfig.MaxConns = int32(MaxOpenConn)
+	poolConfig.MinConns = int32(MinConns)
+
+	conn, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = conn.Ping(ctx); err != nil {
+		return nil, err
+	}
+
+	return conn, nil
 }
