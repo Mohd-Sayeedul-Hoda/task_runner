@@ -76,7 +76,7 @@ func createTask(db *database.Queries) http.Handler {
 
 		task, err := db.CreateTask(r.Context(), database.CreateTaskParams{
 			TaskType: req.TaskType,
-			Status:   string(Queued),
+			Status:   string(Pending),
 			Payload:  data,
 			RunAt:    req.RunAt,
 		})
