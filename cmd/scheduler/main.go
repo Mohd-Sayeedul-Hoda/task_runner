@@ -15,11 +15,11 @@ import (
 	"github.com/Mohd-Sayeedul-Hoda/task_runner/internal/database"
 	pb "github.com/Mohd-Sayeedul-Hoda/task_runner/internal/grpcapi"
 	"github.com/Mohd-Sayeedul-Hoda/task_runner/internal/scheduler"
-	"google.golang.org/grpc"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"google.golang.org/grpc"
 )
 
 type Config struct {
@@ -103,8 +103,9 @@ func run(ctx context.Context, getenv func(string) string, w io.Writer, args []st
 	select {
 	case <-ctx.Done():
 		slog.Info("shutdown initiated", slog.String("reason", "context cancelled"))
-	case err := <-serverError:
-		return err
+	case <-serverError:
+		slog.Info("server stopped", slog.String("reason", "server error"))
+		cancel()
 	}
 
 	slog.Info("waiting for background goroutine...")
