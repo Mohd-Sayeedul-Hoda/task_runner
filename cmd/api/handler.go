@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/Mohd-Sayeedul-Hoda/task_runner/internal/database"
+	"github.com/google/uuid"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type TaskStatus string
@@ -18,6 +21,16 @@ var (
 	COMPLETED TaskStatus = "COMPLETED"
 	FAILED    TaskStatus = "FAILED"
 )
+
+type Task struct {
+	ID        string    `json:"id"`
+	TaskType  string    `json:"task_type"`
+	Payload   any       `json:"payload"`
+	RunAt     time.Time `json:"run_at"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Status    string    `json:"status"`
+}
 
 func handlerHealth() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,15 +45,6 @@ func createTask(db *database.Queries) http.Handler {
 		TaskType string    `json:"task_type"`
 		Payload  any       `json:"payload"`
 		RunAt    time.Time `json:"run_at"`
-	}
-	type response struct {
-		ID        string    `json:"id"`
-		TaskType  string    `json:"task_type"`
-		Payload   any       `json:"payload"`
-		RunAt     time.Time `json:"run_at"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Status    string    `json:"status"`
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -81,7 +85,7 @@ func createTask(db *database.Queries) http.Handler {
 			return
 		}
 
-		respondWithJson(w, http.StatusCreated, response{
+		respondWithJson(w, http.StatusCreated, Task{
 			ID:        task.ID.String(),
 			TaskType:  task.TaskType,
 			RunAt:     task.RunAt,
@@ -91,4 +95,44 @@ func createTask(db *database.Queries) http.Handler {
 			Status:    task.Status,
 		})
 	})
+}
+
+func getTask(db *database.Queries) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		idStr := r.PathValue("id")
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "not valid task id", nil)
+			return
+		}
+
+		task, err := db.GetTaskById(r.Context(), id)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				respondWithError(w, http.StatusNotFound, "task not found", nil)
+				return
+			}
+			respondWithError(w, http.StatusInternalServerError, "internal server error", err)
+			return
+		}
+
+		var data envelope
+		err = json.Unmarshal(task.Payload, &data)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "internal server error", err)
+			return
+		}
+
+		respondWithJson(w, http.StatusCreated, Task{
+			ID:        task.ID.String(),
+			TaskType:  task.TaskType,
+			RunAt:     task.RunAt,
+			CreatedAt: task.CreatedAt,
+			UpdatedAt: task.UpdatedAt,
+			Payload:   data,
+			Status:    task.Status,
+		})
+
+	})
+
 }

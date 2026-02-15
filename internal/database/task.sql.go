@@ -123,6 +123,26 @@ func (q *Queries) GetStalledTasks(ctx context.Context) ([]Task, error) {
 	return items, nil
 }
 
+const getTaskById = `-- name: GetTaskById :one
+SELECT id, task_type, payload, status, run_at, created_at, updated_at FROM tasks
+WHERE id = $1
+`
+
+func (q *Queries) GetTaskById(ctx context.Context, id uuid.UUID) (Task, error) {
+	row := q.db.QueryRow(ctx, getTaskById, id)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.TaskType,
+		&i.Payload,
+		&i.Status,
+		&i.RunAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getTasksByStatus = `-- name: GetTasksByStatus :many
 SELECT id, task_type, payload, status, run_at, created_at, updated_at FROM tasks
 WHERE status = $1 

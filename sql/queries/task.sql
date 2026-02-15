@@ -32,3 +32,7 @@ FOR UPDATE SKIP LOCKED;
 SELECT * FROM tasks
 WHERE status IN ('RUNNING', 'QUEUED')
 AND updated_at < NOW() - INTERVAL '5 minutes';
+
+-- name: GetTaskById :one
+SELECT * FROM tasks
+WHERE id = $1;

@@ -55,6 +55,7 @@ func run(ctx context.Context, getenv func(string) string) error {
 	mux := http.NewServeMux()
 	mux.Handle("GET /api/healthz", handlerHealth())
 	mux.Handle("POST /api/tasks", createTask(db))
+	mux.Handle("GET /api/tasks/{id}", getTask(db))
 
 	httpServer := http.Server{
 		Addr:    ":" + getenv("HTTP_PORT"),
