@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -84,7 +85,6 @@ func (s *SchedulerServer) SendHeartbeat(ctx context.Context, req *pb.HeartbeatRe
 	if worker, ok := s.workerPool[req.GetWorkerId()]; ok {
 
 		worker.lastSeen = time.Now()
-
 		s.workerPoolMutex.Unlock()
 
 	} else {
@@ -140,7 +140,7 @@ func (s *SchedulerServer) UpdateTaskStatus(ctx context.Context, req *pb.UpdateTa
 	})
 	if err != nil {
 		slog.Error("database update failed", "task_id", taskId.String(), "error", err)
-		return nil, status.Error(codes.Internal, "intenal server error")
+		return nil, status.Error(codes.Internal, "internal server error")
 	}
 
 	return &pb.MessageAck{
@@ -160,10 +160,9 @@ func (s *SchedulerServer) removeInactiveWorkerPool() {
 			}
 			delete(s.workerPool, workerID)
 			s.workerPoolKeyMutex.Lock()
-			s.workerPoolKey = make([]string, 0, len(s.workerPool))
-			for workerID := range s.workerPool {
-				s.workerPoolKey = append(s.workerPoolKey, workerID)
-			}
+			s.workerPoolKey = slices.DeleteFunc(s.workerPoolKey, func(id string) bool {
+				return id == workerID
+			})
 			s.workerPoolKeyMutex.Unlock()
 		}
 	}
@@ -224,12 +223,10 @@ func (s *SchedulerServer) manageAndScheduleTask(ctx context.Context) {
 			continue
 		}
 
-		childCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		_, err = worker.client.SubmitTask(childCtx, &pb.TaskRequest{
+		_, err = worker.client.SubmitTask(ctx, &pb.TaskRequest{
 			TaskId:  task.ID.String(),
 			Payload: task.Payload,
 		})
-		cancel()
 		if err != nil {
 			slog.Error("failed to submit task", "err", err)
 			continue

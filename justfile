@@ -1,6 +1,7 @@
 alias bs := build-scheduler
 alias bw := build-worker
 alias rs := run-scheduler
+alias rw := run-worker
 
 # Compile the scheduler binary
 build-scheduler:
