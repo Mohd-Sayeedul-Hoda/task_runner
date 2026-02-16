@@ -52,21 +52,21 @@ func createTask(db *database.Queries) http.Handler {
 		err := decode(w, r, &req)
 		if err != nil {
 			if errors.Is(err, errInvalidRequest) {
-				respondWithError(w, http.StatusBadRequest, err.Error(), nil)
+				respondWithError(w, r, http.StatusBadRequest, err.Error(), nil)
 				return
 			}
-			respondWithError(w, http.StatusInternalServerError, "internal server error", err)
+			respondWithError(w, r, http.StatusInternalServerError, "internal server error", err)
 			return
 		}
 
 		if req.TaskType == "" {
-			respondWithError(w, http.StatusBadRequest, "task type should not be empty", err)
+			respondWithError(w, r, http.StatusBadRequest, "task type should not be empty", err)
 			return
 		}
 
 		data, err := json.Marshal(req.Payload)
 		if err != nil {
-			respondWithError(w, http.StatusBadRequest, "payload should be valid json", err)
+			respondWithError(w, r, http.StatusBadRequest, "payload should be valid json", err)
 			return
 		}
 
@@ -81,7 +81,7 @@ func createTask(db *database.Queries) http.Handler {
 			RunAt:    req.RunAt,
 		})
 		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "internal server err", err)
+			respondWithError(w, r, http.StatusInternalServerError, "internal server err", err)
 			return
 		}
 
@@ -102,24 +102,24 @@ func getTask(db *database.Queries) http.Handler {
 		idStr := r.PathValue("id")
 		id, err := uuid.Parse(idStr)
 		if err != nil {
-			respondWithError(w, http.StatusBadRequest, "not valid task id", nil)
+			respondWithError(w, r, http.StatusBadRequest, "not valid task id", nil)
 			return
 		}
 
 		task, err := db.GetTaskById(r.Context(), id)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				respondWithError(w, http.StatusNotFound, "task not found", nil)
+				respondWithError(w, r, http.StatusNotFound, "task not found", nil)
 				return
 			}
-			respondWithError(w, http.StatusInternalServerError, "internal server error", err)
+			respondWithError(w, r, http.StatusInternalServerError, "internal server error", err)
 			return
 		}
 
 		var data envelope
 		err = json.Unmarshal(task.Payload, &data)
 		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "internal server error", err)
+			respondWithError(w, r, http.StatusInternalServerError, "internal server error", err)
 			return
 		}
 
@@ -134,5 +134,4 @@ func getTask(db *database.Queries) http.Handler {
 		})
 
 	})
-
 }

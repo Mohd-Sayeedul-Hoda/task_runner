@@ -30,9 +30,14 @@ func respondWithJson(w http.ResponseWriter, status int, payload any) {
 
 }
 
-func respondWithError(w http.ResponseWriter, status int, msg string, err error) {
+func respondWithError(w http.ResponseWriter, r *http.Request, status int, msg string, err error) {
 	if err != nil {
-		slog.Error("error response", "err", err)
+		slog.Error("server error",
+			slog.String("err", err.Error()),
+			slog.String("request", r.Method),
+			slog.String("url", r.URL.Path),
+		)
+
 	}
 
 	type errorResponse struct {

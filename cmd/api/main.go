@@ -16,7 +16,7 @@ import (
 
 const (
 	MaxOpenConn = 10
-	MinConns    = 10
+	MinConns    = 2
 	MaxIdleTime = "10m"
 )
 
@@ -34,7 +34,7 @@ func main() {
 	ctx := context.Background()
 	err = run(ctx, getenv)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, err.Error())
+		fmt.Fprintf(os.Stderr, "%s", err.Error())
 		os.Exit(1)
 	}
 }
@@ -57,9 +57,11 @@ func run(ctx context.Context, getenv func(string) string) error {
 	mux.Handle("POST /api/tasks", createTask(db))
 	mux.Handle("GET /api/tasks/{id}", getTask(db))
 
+	handler := recoverPanic(newLoggingMiddleware(mux))
+
 	httpServer := http.Server{
 		Addr:    ":" + getenv("HTTP_PORT"),
-		Handler: mux,
+		Handler: handler,
 	}
 
 	serverErr := make(chan error, 1)
