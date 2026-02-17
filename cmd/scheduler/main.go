@@ -33,8 +33,7 @@ type Config struct {
 func main() {
 	err := godotenv.Load(".env")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", err)
-		os.Exit(1)
+		slog.Info("no .env file found, relying on system environment variables")
 	}
 
 	var getenv = func(key string) string {

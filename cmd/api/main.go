@@ -23,8 +23,7 @@ const (
 func main() {
 	err := godotenv.Load(".env")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "unable to load .env: %s", err.Error())
-		os.Exit(1)
+		slog.Info("no .env file found, relying on system environment variables")
 	}
 
 	getenv := func(key string) string {
