@@ -9,6 +9,10 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o scheduler ./cmd/scheduler
 
 FROM alpine:latest
+
 WORKDIR /app
+
 COPY --from=builder /app/scheduler .
+COPY --from=builder /app/sql ./sql
+
 CMD ["./scheduler"]

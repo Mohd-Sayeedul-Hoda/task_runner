@@ -19,7 +19,10 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/pressly/goose/v3"
 	"google.golang.org/grpc"
+
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
 type Config struct {
@@ -135,6 +138,21 @@ func OpenPostgresConn(ctx context.Context, cfg *Config) (*pgxpool.Pool, error) {
 	if err = conn.Ping(ctx); err != nil {
 		return nil, err
 	}
+
+	db := stdlib.OpenDB(*poolConfig.ConnConfig)
+
+	// Ensure we close this standard connection wrapper when done
+	defer db.Close()
+
+	if err := goose.SetDialect("postgres"); err != nil {
+		return nil, err
+	}
+
+	slog.Info("Running database migrations...")
+	if err := goose.UpContext(ctx, db, "sql/schema"); err != nil {
+		return nil, fmt.Errorf("migration failed: %w", err)
+	}
+	slog.Info("Migrations completed successfully.")
 
 	return conn, nil
 }

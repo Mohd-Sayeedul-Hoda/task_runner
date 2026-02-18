@@ -123,7 +123,7 @@ func getTask(db *database.Queries) http.Handler {
 			return
 		}
 
-		respondWithJson(w, http.StatusCreated, Task{
+		respondWithJson(w, http.StatusOK, Task{
 			ID:        task.ID.String(),
 			TaskType:  task.TaskType,
 			RunAt:     task.RunAt,

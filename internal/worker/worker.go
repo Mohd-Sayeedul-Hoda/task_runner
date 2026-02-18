@@ -13,12 +13,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type Config struct {
-	WorkerPort    int    `env:"WORKER_PORT" envDefault:"51000"`
-	WorkerAddr    string `env:"WORKER_ADDRESS,required"`
-	SchedulerAddr string `env:"SCHEDULER_ADDRESS,required"`
-}
-
 const (
 	noOfConcurrentWorker = 50
 	heartBeatInterval    = 5
@@ -35,14 +29,13 @@ type WorkerServer struct {
 	taskQueue chan *pb.TaskRequest
 }
 
-func NewWorker(cfg *Config, schedulerConn *grpc.ClientConn) *WorkerServer {
+func NewWorker(schedulerConn *grpc.ClientConn, workerAddr string) *WorkerServer {
 
 	schedulerClient := pb.NewSchedulerClient(schedulerConn)
 
 	return &WorkerServer{
 		id:         uuid.New(),
-		workerPort: cfg.WorkerPort,
-		workerAddr: cfg.WorkerAddr,
+		workerAddr: workerAddr,
 
 		schedulerClient: schedulerClient,
 		schedulerConn:   schedulerConn,

@@ -1,0 +1,73 @@
+version: "3"
+
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: postgres-dockerfile
+    container_name: taskrunner-postgres
+    networks:
+      - taskrunner-network
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-taskrunner}
+      POSTGRES_USER: ${POSTGRES_USER:-taskrunner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-taskrunner}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: scheduler-dockerfile
+    container_name: taskrunner-scheduler
+    networks:
+      - taskrunner-network
+    environment:
+      PORT: ${SCHEDULER_PORT:-10000}
+      DB_DSN: postgres://${POSTGRES_USER:-taskrunner}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-taskrunner}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  httpserver:
+    build:
+      context: .
+      dockerfile: httpserver-dockerfile
+    container_name: taskrunner-httpserver
+    networks:
+      - taskrunner-network
+    environment:
+      HTTP_PORT: ${HTTP_SERVER_PORT:-8080}
+      DB_DSN: postgres://${POSTGRES_USER:-taskrunner}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-taskrunner}?sslmode=disable
+    ports:
+      - "${HTTP_SERVER_PORT:-8080}:${HTTP_SERVER_PORT:-8080}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker-dockerfile
+    networks:
+      - taskrunner-network
+    environment:
+      WORKER_PORT: ${WORKER_PORT:-51000}
+      SCHEDULER_ADDRESS: scheduler:${SCHEDULER_PORT:-10000}
+    deploy:
+      replicas: ${WORKER_COUNT:-1}
+    depends_on:
+      scheduler:
+          condition: service_started
+
+networks:
+  taskrunner-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
